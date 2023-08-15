@@ -1,31 +1,27 @@
-import { Prop, Schema, SchemaFactory } from "@nestjs/mongoose";
-import { Document } from "mongoose";
+import { Model, Column, Table, DataType } from 'sequelize-typescript';
+import { NoteCategory } from '../constants/notes.constants';
 
-export type NoteDocument = Note & Document;
+@Table
+export class Note extends Model<Note> {
+  @Column({ primaryKey: true, autoIncrement: true, allowNull: false })
+  id!: number;
 
-@Schema()
-export class Note {
-  @Prop({ required: true })
-  name: string;
+  @Column({ allowNull: false, validate: { notEmpty: true, len: [3, 25] } })
+  name!: string;
 
-  @Prop({ required: true })
-  category: string;
-
-  @Prop({ required: true })
-  content: string;
-
-  @Prop({ required: true })
-  active: boolean;
-
-  @Prop({
-    required: true,
-    default: new Date().toLocaleDateString("en-US", {
-      month: "long",
-      day: "2-digit",
-      year: "numeric",
-    }),
+  @Column({
+    type: DataType.ENUM,
+    values: Object.values(NoteCategory),
+    allowNull: false,
   })
-  date: string;
-}
+  category!: NoteCategory;
 
-export const NoteSchema = SchemaFactory.createForClass(Note);
+  @Column({ allowNull: false, type: DataType.ARRAY(DataType.STRING) })
+  dates!: string[];
+
+  @Column({ allowNull: false, validate: { notEmpty: true, len: [3, 150] } })
+  content!: string;
+
+  @Column({ defaultValue: false, allowNull: false })
+  isArchived!: boolean;
+}

@@ -1,36 +1,71 @@
-import { CreateNoteDto } from "./dto/create-note.dto";
 import { Injectable } from "@nestjs/common";
-import { InjectModel } from "@nestjs/mongoose";
-import { Note, NoteDocument } from "./schemas/note.schema";
-import { Model } from "mongoose";
-import { UpdateNoteDto } from "./dto/update-note.dto";
+import { InjectModel } from "@nestjs/sequelize";
+import { Note } from "./schemas/note.schema";
+import { FindOptions } from 'sequelize/types';
+
+type NoteStats = {
+  activeNotes: number;
+  archivedNotes: number;
+};
+
+type CategoryStats = Record<string, NoteStats>;
 
 @Injectable()
 export class NotesService {
-  constructor(@InjectModel(Note.name) private noteModel: Model<NoteDocument>) { }
+  constructor(
+    @InjectModel(Note)
+    private noteModel: typeof Note,
+  ) { }
 
   async getAll(): Promise<Note[]> {
-    return this.noteModel.find().exec();
+    return this.noteModel.findAll();
   }
 
-  async stats(): Promise<Array<Object>> {
-    return this.noteModel.aggregate([{ $count: "number_of_notes" }]);
+  getById(id: string): Promise<Note> {
+    return this.noteModel.findOne({
+      where: {
+        id,
+      },
+    });
   }
 
-  async getById(id: string): Promise<Note> {
-    return this.noteModel.findById(id);
+  async create(note: Note): Promise<Note> {
+    return this.noteModel.create(note as Note);
   }
 
-  async create(createNoteDto: CreateNoteDto): Promise<Note> {
-    const newNote = new this.noteModel(createNoteDto);
-    return newNote.save();
+  async update(
+    id: number,
+    updatedNote: Note,
+  ): Promise<{ affectedRows: number; updatedNoteData: Note }> {
+    const [affectedRows, [updatedNoteData]] = await Note.update(updatedNote, {
+      where: { id },
+      returning: true,
+    });
+    return { affectedRows, updatedNoteData };
   }
 
-  async remove(id: string): Promise<Note> {
-    return this.noteModel.findByIdAndDelete(id);
+  async delete(id: number): Promise<void> {
+    const options: FindOptions = { where: { id } };
+    const note = await Note.findOne(options);
+    if (note) {
+      await note.destroy();
+    }
   }
 
-  async update(id: string, noteDto: UpdateNoteDto): Promise<Note> {
-    return this.noteModel.findByIdAndUpdate(id, noteDto, { new: true });
+  async stats(): Promise<CategoryStats> {
+    const options: FindOptions = { attributes: ['category', 'isArchived'] };
+    const notes = await Note.findAll(options);
+
+    const stats: CategoryStats = {};
+
+    for (const { dataValues: { category, isArchived } } of notes) {
+      if (!stats[category]) {
+        stats[category] = { activeNotes: 0, archivedNotes: 0 };
+      }
+
+      isArchived ? stats[category].archivedNotes++ : stats[category].activeNotes++;
+    }
+
+    return stats;
   }
 }

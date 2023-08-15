@@ -1,65 +1,97 @@
-import { NOTE_ERRORS } from "./constants/notes.constants";
 import {
   Body,
   Controller,
-  Delete,
   Get,
-  NotFoundException,
+  HttpStatus,
   Param,
   Patch,
+  Delete,
   Post,
-} from "@nestjs/common";
-import { IdValidationPipe } from "src/pipes/id-validation.pipe";
-import { CreateNoteDto } from "./dto/create-note.dto";
-import { UpdateNoteDto } from "./dto/update-note.dto";
-import { NotesService } from "./notes.service";
-import { Note } from "./schemas/note.schema";
+  Res,
+} from '@nestjs/common';
+import { NotesService } from './notes.service';
+import { Note } from './schemas/note.schema';
+import noteSchema from './validators/noteSchema';
+import dateParser from './validators/dateParser';
+import { Response } from 'express';
+import { NOTE_MESSAGES } from './constants/notes.constants';
 
-@Controller("notes")
+
+@Controller('notes')
 export class NotesController {
-  constructor(private notesService: NotesService) { }
+  constructor(private readonly noteService: NotesService) { }
 
-  @Get("stats")
-  async stats(): Promise<Array<Object>> {
-    return this.notesService.stats();
+  @Get('/stats')
+  async stats(@Res() response: Response) {
+    const stats = await this.noteService.stats();
+    return response.status(HttpStatus.OK).json({
+      stats,
+    });
   }
 
-  @Get("")
-  async getAll(): Promise<Note[]> {
-    return this.notesService.getAll();
+  @Get()
+  async getAll(@Res() response: Response) {
+    const notes = await this.noteService.getAll();
+    return response.status(HttpStatus.OK).json({
+      notes,
+    });
   }
 
-  @Get(":id")
-  async getOne(@Param("id", IdValidationPipe) id): Promise<Note> {
-    const note = await this.notesService.getById(id);
-    if (!note) {
-      throw new NotFoundException(NOTE_ERRORS.NOT_FOUND);
-    }
-    return note;
+  @Get('/:id')
+  async getById(@Res() response: Response, @Param('id') id) {
+    const note = await this.noteService.getById(id);
+    return response.status(HttpStatus.OK).json({
+      note,
+    });
   }
 
   @Post()
-  async create(@Body() createNoteDto: CreateNoteDto): Promise<Note> {
-    return this.notesService.create(createNoteDto);
+  async create(@Res() response: Response, @Body() note: Note) {
+    const validatedNote = await noteSchema.validate({
+      ...note,
+      dates: undefined,
+      ...(note.content && { dates: dateParser(note.content) }),
+    });
+    const createdNote = await this.noteService.create(
+      validatedNote as Note,
+    );
+    return response.status(HttpStatus.CREATED).json({
+      note: createdNote,
+    });
   }
 
-  @Delete(":id")
-  async remove(@Param("id", IdValidationPipe) id: string): Promise<any> {
-    const deleteNote = await this.notesService.remove(id);
-    if (!deleteNote) {
-      throw new NotFoundException(NOTE_ERRORS.NOT_FOUND);
+  @Patch('/:id')
+  async update(@Res() response: Response, @Param('id') id, @Body() note: Note) {
+    const validatedNote = await noteSchema.validate({
+      ...note,
+      dates: undefined,
+      ...(note.content && { dates: dateParser(note.content) }),
+    });
+    const { affectedRows, updatedNoteData } = await this.noteService.update(
+      id,
+      validatedNote as Note,
+    );
+    if (!affectedRows) {
+      return response.status(HttpStatus.NOT_FOUND).json({
+        message: NOTE_MESSAGES.ERRORS.NOT_FOUND,
+      });
     }
+    return response.status(HttpStatus.OK).json({
+      note: updatedNoteData,
+    });
   }
 
-  @Patch(":id")
-  async update(
-    @Body() updateNoteDto: UpdateNoteDto,
-    @Param("id", IdValidationPipe) id: string
-  ): Promise<Note> {
-    const updateNote = await this.notesService.update(id, updateNoteDto);
-    if (!updateNote) {
-      throw new NotFoundException(NOTE_ERRORS.NOT_FOUND);
+  @Delete('/:id')
+  async delete(@Res() response: Response, @Param('id') id) {
+    const note = await this.noteService.getById(id);
+    if (!note) {
+      return response.status(HttpStatus.NOT_FOUND).json({
+        message: NOTE_MESSAGES.ERRORS.NOT_FOUND,
+      });
     }
-    return updateNote;
+    await this.noteService.delete(id);
+    return response.status(HttpStatus.OK).json({
+      message: NOTE_MESSAGES.SUCCESS.DELETED,
+    });
   }
 }

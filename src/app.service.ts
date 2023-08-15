@@ -9,8 +9,8 @@ export class AppService {
         name: "string",
         category: "string",
         content: "string",
-        active: "boolean",
-        date: "string (optional)"
+        isArchived: "boolean",
+        date: "string"
       },
       endpoints: [
         { method: "POST", path: "/notes", action: "Create a note object." },
